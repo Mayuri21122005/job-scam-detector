@@ -9,18 +9,13 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# ✅ FIXED MODEL LOADING (VERY IMPORTANT)
+# ------------------- LOAD MODEL -------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-print("Current directory:", BASE_DIR)
-print("Files:", os.listdir(BASE_DIR))
+model = pickle.load(open(os.path.join(BASE_DIR, "model.pkl"), "rb"))
+tfidf = pickle.load(open(os.path.join(BASE_DIR, "tfidf.pkl"), "rb"))
 
-model_path = os.path.join(BASE_DIR, "model.pkl")
-tfidf_path = os.path.join(BASE_DIR, "tfidf.pkl")
-
-model = pickle.load(open(model_path, "rb"))
-tfidf = pickle.load(open(tfidf_path, "rb"))
-
+# ------------------- RULES -------------------
 red_flags = [
     "earn money fast","no experience required","registration fee",
     "work from home","urgent hiring","limited seats","pay to apply",
@@ -124,11 +119,20 @@ def predict():
     emails = check_email(text)
     urls = check_url(text)
 
+    # 🔥 NEW: LOW INFORMATION DETECTION
+    if len(text.split()) < 8:
+        flags.append("Very little information provided")
+
+    # 🔥 NEW: MISSING COMPANY CHECK
+    if "company" not in text.lower() and len(text.split()) < 15:
+        flags.append("Missing company details")
+
     explanations = generate_explanation(flags, emails, urls)
     company_status, company_reason = validate_company(text, emails)
 
     suspicious_email = any(("gmail" in e or "yahoo" in e) for e in emails)
 
+    # 🔥 IMPROVED RISK FORMULA
     risk_score = min(
         (prob * 0.55) +
         (len(flags) * 0.2) +
@@ -137,6 +141,7 @@ def predict():
         0.95
     )
 
+    # ---------------- DECISION ----------------
     if risk_score > 0.7:
         prediction = "Fake"
     elif risk_score > 0.4:
@@ -151,6 +156,7 @@ def predict():
     else:
         risk_level = "Low Risk ✅"
 
+    # ---------------- BREAKDOWN ----------------
     breakdown = {
         "ml": prob * 100,
         "keyword": len(flags) * 10,
@@ -169,6 +175,7 @@ def predict():
 
     primary_reason = explanations[0] if explanations else "No strong risk"
 
+    # 🔥 CONSISTENCY LOGIC
     confidence_note = ""
     if prob < 0.3 and risk_score > 0.8:
         confidence_note = "⚠ Rule-based system dominates decision"
