@@ -4,13 +4,22 @@ import pickle
 import re
 import requests
 from bs4 import BeautifulSoup
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Load model
-model = pickle.load(open('model.pkl', 'rb'))
-tfidf = pickle.load(open('tfidf.pkl', 'rb'))
+# ✅ FIXED MODEL LOADING (VERY IMPORTANT)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+print("Current directory:", BASE_DIR)
+print("Files:", os.listdir(BASE_DIR))
+
+model_path = os.path.join(BASE_DIR, "model.pkl")
+tfidf_path = os.path.join(BASE_DIR, "tfidf.pkl")
+
+model = pickle.load(open(model_path, "rb"))
+tfidf = pickle.load(open(tfidf_path, "rb"))
 
 red_flags = [
     "earn money fast","no experience required","registration fee",
@@ -51,7 +60,6 @@ def validate_company(text, emails):
     known = ["infosys","tcs","wipro","google","amazon","microsoft"]
     text_lower = text.lower()
 
-    # 🔥 Email domain check (IMPORTANT FIX)
     if emails:
         domain = emails[0].split("@")[-1]
         if "gmail" in domain or "yahoo" in domain:
@@ -64,7 +72,7 @@ def validate_company(text, emails):
             else:
                 return f"{c.capitalize()} mentioned but suspicious ⚠️", "Domain mismatch detected"
 
-    return "Unknown Company ⚠️", "Company not found in trusted database"
+    return "Unknown Company ⚠️", "Company not found"
 
 # ------------------- EXPLANATION -------------------
 def generate_explanation(flags, emails, urls):
@@ -72,22 +80,18 @@ def generate_explanation(flags, emails, urls):
 
     for f in flags:
         if "no experience" in f:
-            reasons.append("Unrealistic job requirement (no experience needed)")
+            reasons.append("Unrealistic job requirement")
         elif "registration" in f or "verification" in f:
-            reasons.append("Payment request detected → strong scam signal")
-        elif "work from home" in f:
-            reasons.append("Common scam pattern: work-from-home offers")
-        elif "congratulations" in f:
-            reasons.append("Emotional trigger used to trap users")
+            reasons.append("Payment request detected")
         else:
-            reasons.append(f"Suspicious phrase detected: {f}")
+            reasons.append(f"Suspicious phrase: {f}")
 
     for e in emails:
         if "gmail" in e or "yahoo" in e:
-            reasons.append(f"Unofficial email used: {e}")
+            reasons.append(f"Free email used: {e}")
 
     for u in urls:
-        reasons.append("Suspicious or shortened URL detected")
+        reasons.append("Suspicious URL detected")
 
     return reasons
 
@@ -101,7 +105,7 @@ def predict_job(text):
 # ------------------- HOME -------------------
 @app.route('/')
 def home():
-    return "✅ API Running Successfully"
+    return "API Running Successfully"
 
 # ------------------- MAIN -------------------
 @app.route('/predict', methods=['POST'])
@@ -111,7 +115,6 @@ def predict():
     text = data.get("text", "")
     url = data.get("url", "")
 
-    # 🔥 URL SUPPORT
     if not text and url:
         text = extract_text_from_url(url)
 
@@ -124,10 +127,8 @@ def predict():
     explanations = generate_explanation(flags, emails, urls)
     company_status, company_reason = validate_company(text, emails)
 
-    # 🔥 IMPROVED EMAIL LOGIC
     suspicious_email = any(("gmail" in e or "yahoo" in e) for e in emails)
 
-    # 🔥 BALANCED RISK (ML DOMINANT)
     risk_score = min(
         (prob * 0.6) +
         (len(flags) * 0.15) +
@@ -136,7 +137,6 @@ def predict():
         0.95
     )
 
-    # 🔥 BETTER DECISION LOGIC
     if risk_score > 0.7:
         prediction = "Fake"
     elif risk_score > 0.4:
@@ -144,7 +144,6 @@ def predict():
     else:
         prediction = "Real"
 
-    # Risk level
     if risk_score > 0.7:
         risk_level = "High Risk 🚨"
     elif risk_score > 0.4:
@@ -152,7 +151,6 @@ def predict():
     else:
         risk_level = "Low Risk ✅"
 
-    # 🔥 FIXED BREAKDOWN (NO OVERWEIGHT)
     breakdown = {
         "ml": prob * 100,
         "keyword": len(flags) * 10,
@@ -171,7 +169,6 @@ def predict():
 
     primary_reason = explanations[0] if explanations else "No strong risk"
 
-    # 🔥 CONSISTENCY LOGIC (VERY IMPORTANT)
     confidence_note = ""
     if prob < 0.3 and risk_score > 0.8:
         confidence_note = "⚠ Rule-based system dominates decision"
@@ -180,27 +177,14 @@ def predict():
         "prediction": prediction,
         "risk_score": round(risk_score * 100, 2),
         "risk_level": risk_level,
-
-        "red_flags": flags,
-        "suspicious_emails": emails,
-        "url_flags": urls,
-
-        "explanations": explanations,
         "primary_reason": primary_reason,
         "confidence_note": confidence_note,
-
         "risk_breakdown": percent_breakdown,
-
         "company_status": company_status,
         "company_reason": company_reason
     })
 
-import os
-
-@app.route('/')
-def home():
-    return "API Running Successfully"
-
+# ------------------- RUN -------------------
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port)
