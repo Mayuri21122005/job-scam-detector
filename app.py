@@ -130,10 +130,10 @@ def predict():
     suspicious_email = any(("gmail" in e or "yahoo" in e) for e in emails)
 
     risk_score = min(
-        (prob * 0.6) +
-        (len(flags) * 0.15) +
-        (1 if suspicious_email else 0) * 0.15 +
-        (len(urls) * 0.1),
+        (prob * 0.55) +
+        (len(flags) * 0.2) +
+        (1 if suspicious_email else 0) * 0.2 +
+        (len(urls) * 0.15),
         0.95
     )
 
